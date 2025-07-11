@@ -1,71 +1,80 @@
--- Brainrot Auto-Farmer
--- Version: 1.2
--- Requirements: Xeno/Krnl/Fluxus
+-- Roblox-Compatible Brainrot Auto-Farmer
+-- Safe for loadstring conversion
 
 local Players = game:GetService("Players")
-local Player = Players.LocalPlayer
-local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
--- CONFIG --
-local Settings = {
-    BasePosition = Vector3.new(100, 50, -30), -- Set your base coordinates
-    CollectRange = 50, -- Studs
-    Cooldown = 3, -- Seconds between actions
-    WalkSpeed = 32 -- Movement speed
+local Player = Players.LocalPlayer
+local Character = Player.Character or Player.CharacterAdded:Wait()
+local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+
+-- Configuration
+local SETTINGS = {
+    BasePosition = Vector3.new(100, 50, -30), -- SET YOUR BASE COORDINATES HERE
+    CollectRange = 50,
+    MovementSpeed = 32,
+    Cooldown = 3
 }
 
--- CORE FUNCTIONS --
-local function FindNearestBrainrot()
-    local closest = nil
-    local minDistance = Settings.CollectRange
+-- Find nearest brainrot part
+local function findNearestBrainrot()
+    local closestPart = nil
+    local shortestDistance = SETTINGS.CollectRange
 
-    for _, obj in pairs(workspace:GetDescendants()) do
-        if obj.Name:find("Brainrot") and obj:IsA("BasePart") then
-            local distance = (Player.Character.HumanoidRootPart.Position - obj.Position).Magnitude
-            if distance < minDistance then
-                closest = obj
-                minDistance = distance
+    for _, descendant in pairs(workspace:GetDescendants()) do
+        if descendant:IsA("BasePart") and descendant.Name:find("Brainrot") then
+            local distance = (HumanoidRootPart.Position - descendant.Position).Magnitude
+            if distance < shortestDistance then
+                closestPart = descendant
+                shortestDistance = distance
             end
         end
     end
 
-    return closest
+    return closestPart
 end
 
-local function MoveTo(position)
-    local chr = Player.Character
-    if not chr then return end
-
-    local hrp = chr:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    local tween = TweenService:Create(
-        hrp,
-        TweenInfo.new((hrp.Position - position).Magnitude/Settings.WalkSpeed),
-        {CFrame = CFrame.new(position)}
+-- Smooth movement to position
+local function moveTo(position)
+    HumanoidRootPart.Anchored = true
+    local tweenInfo = TweenInfo.new(
+        (HumanoidRootPart.Position - position).Magnitude / SETTINGS.MovementSpeed,
+        Enum.EasingStyle.Linear
     )
-
+    local tween = TweenService:Create(HumanoidRootPart, tweenInfo, {CFrame = CFrame.new(position)})
+    
     tween:Play()
     tween.Completed:Wait()
+    HumanoidRootPart.Anchored = false
 end
 
-local function CollectBrainrot(target)
-    -- Simulate collection
-    game:GetService("ReplicatedStorage").Events.CollectItem:FireServer(target)
+-- Collect and redeem process
+local function collectAndRedeem(target)
+    -- Fire collection event
+    local collectEvent = ReplicatedStorage:FindFirstChild("CollectItem")
+    if collectEvent and collectEvent:IsA("RemoteEvent") then
+        collectEvent:FireServer(target, HumanoidRootPart.Position)
+    end
 
     -- Return to base
-    MoveTo(Settings.BasePosition)
+    moveTo(SETTINGS.BasePosition)
 
-    -- Simulate redemption
+    -- Fire redeem event
     task.wait(0.5)
-    game:GetService("ReplicatedStorage").Events.RedeemItem:FireServer("Brainrot")
+    local redeemEvent = ReplicatedStorage:FindFirstChild("RedeemItem")
+    if redeemEvent and redeemEvent:IsA("RemoteEvent") then
+        redeemEvent:FireServer("Brainrot")
+    end
 end
 
--- MAIN LOOP --
-while task.wait(1) do
-    local target = FindNearestBrainrot()
-    if target then
-        CollectBrainrot(target)
+-- Main loop
+while true do
+    if Character and Character.Parent and HumanoidRootPart then
+        local brainrot = findNearestBrainrot()
+        if brainrot then
+            collectAndRedeem(brainrot)
+        end
     end
+    task.wait(SETTINGS.Cooldown)
 end

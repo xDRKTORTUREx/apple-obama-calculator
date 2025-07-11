@@ -1,134 +1,461 @@
 --[[
-🔥 ShadowTools v2.1 - Auto-Steal with Base Teleportation
-✨ New Feature:
-- Smart item detection
-- Instant base teleport when item acquired
-- Configurable base location
-- Anti-detection measures
+🔍 Enhanced ESP System for Brainrot Heist Pro
+✅ Comprehensive ESP with 8 visualization options
+✅ Optimized performance with throttled updates
+✅ Customizable colors and settings
+✅ Dynamic distance scaling
+✅ Item/Player differentiation
 ]]
 
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
-local Window = Library.CreateLib("ShadowTools v2.1", "Serpent")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
+local TweenService = game:GetService("TweenService")
+local player = Players.LocalPlayer
 
--- Configuration
-local config = {
-    BasePosition = Vector3.new(0, 0, 0), -- Set your base coordinates here
-    TeleportDelay = 1, -- Seconds to wait before teleporting after steal
-    CollectionRadius = 50 -- Distance to consider "at base" for auto-collect
+--#region ESP CONFIGURATION
+local ESPConfig = {
+    Enabled = true,
+    UpdateInterval = 0.5,  -- Seconds between updates
+    MaxDistance = 500,     -- Max render distance in studs
+    
+    -- Visualization modes
+    Modes = {
+        Boxes = true,
+        Tracers = true,
+        Names = true,
+        Distances = true,
+        HealthBars = true,
+        Glow = true,
+        Chams = true,
+        Outlines = true
+    },
+    
+    -- Customizable colors
+    Colors = {
+        Brainrot = Color3.fromRGB(255, 50, 100),
+        Players = Color3.fromRGB(100, 200, 255),
+        Base = Color3.fromRGB(0, 255, 100),
+        Highlight = Color3.fromRGB(255, 215, 0)
+    },
+    
+    -- Size settings
+    Sizes = {
+        BoxThickness = 1,
+        TracerThickness = 1,
+        NameSize = 18,
+        ChamTransparency = 0.7
+    },
+    
+    -- Internal state
+    Objects = {},
+    Connections = {}
 }
+--#endregion
 
--- State tracking
-local stolenItems = {}
-local isTransporting = false
-
--- Core Functions
-local function setBaseLocation()
-    local char = game.Players.LocalPlayer.Character
-    if char and char:FindFirstChild("HumanoidRootPart") then
-        config.BasePosition = char.HumanoidRootPart.Position
-        Library:Notify("Base location set!", "Your current position has been saved")
+--#region DRAWING LIBRARY
+local DrawingLib = {}
+do
+    -- Create drawing objects
+    function DrawingLib:Create(type, properties)
+        local drawing = Drawing.new(type)
+        for prop, value in pairs(properties) do
+            drawing[prop] = value
+        end
+        return drawing
     end
-end
-
-local function teleportToBase()
-    local char = game.Players.LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
     
-    isTransporting = true
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
-    
-    -- Save original state
-    local originalWalkSpeed = humanoid.WalkSpeed
-    humanoid.WalkSpeed = 0 -- Prevent movement during teleport
-    
-    -- Teleport effect (visual only)
-    local effect = Instance.new("Part")
-    effect.Size = Vector3.new(5, 5, 5)
-    effect.Position = char.HumanoidRootPart.Position
-    effect.Anchored = true
-    effect.CanCollide = false
-    effect.Transparency = 0.7
-    effect.Color = Color3.fromRGB(138, 43, 226) -- Purple
-    effect.Parent = workspace
-    game:GetService("TweenService"):Create(
-        effect,
-        TweenInfo.new(0.5),
-        {Transparency = 1, Size = Vector3.new(10, 10, 10)}
-    ):Play()
-    
-    -- Actual teleport
-    char.HumanoidRootPart.CFrame = CFrame.new(config.BasePosition)
-    task.wait(0.1)
-    
-    -- Cleanup
-    effect:Destroy()
-    humanoid.WalkSpeed = originalWalkSpeed
-    isTransporting = false
-    
-    -- Auto-collect if near storage
-    local atBase = (char.HumanoidRootPart.Position - config.BasePosition).Magnitude < config.CollectionRadius
-    if atBase then
-        Library:Notify("Item delivered!", "Automatically stored in base")
+    -- Create full ESP set for an object
+    function DrawingLib:CreateESPSet(object, espType)
+        local set = {}
+        
+        if ESPConfig.Modes.Boxes then
+            set.Box = self:Create("Square", {
+                Thickness = ESPConfig.Sizes.BoxThickness,
+                Filled = false
+            })
+        end
+        
+        if ESPConfig.Modes.Tracers then
+            set.Tracer = self:Create("Line", {
+                Thickness = ESPConfig.Sizes.TracerThickness
+            })
+        end
+        
+        if ESPConfig.Modes.Names then
+            set.Name = self:Create("Text", {
+                Size = ESPConfig.Sizes.NameSize,
+                Center = true,
+                Outline = true
+            })
+        end
+        
+        if ESPConfig.Modes.Distances then
+            set.Distance = self:Create("Text", {
+                Size = ESPConfig.Sizes.NameSize - 2,
+                Center = true,
+                Outline = true
+            })
+        end
+        
+        if ESPConfig.Modes.HealthBars and espType == "Player" then
+            set.HealthBarBG = self:Create("Square", {
+                Thickness = 1,
+                Filled = true,
+                Color = Color3.new(0, 0, 0)
+            })
+            set.HealthBar = self:Create("Square", {
+                Thickness = 1,
+                Filled = true
+            })
+        end
+        
+        return set
     end
-end
-
-local function enhancedAutoSteal()
-    local char = game.Players.LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
     
-    -- Find nearest stealable item
-    local closestItem, closestDistance = nil, math.huge
-    for _, item in pairs(workspace:GetDescendants()) do
-        if item:IsA("BasePart") and item.Name:find("Loot") and not stolenItems[item] then
-            local distance = (char.HumanoidRootPart.Position - item.Position).Magnitude
-            if distance < closestDistance then
-                closestItem = item
-                closestDistance = distance
+    -- Update drawing object positions
+    function DrawingLib:UpdatePosition(drawingSet, position, screenPosition, distance, espType)
+        local scale = math.clamp(1 - (distance / ESPConfig.MaxDistance), 0.3, 1)
+        
+        -- Box
+        if drawingSet.Box then
+            local size = 20 * scale
+            drawingSet.Box.Size = Vector2.new(size, size)
+            drawingSet.Box.Position = screenPosition - Vector2.new(size / 2, size / 2)
+            drawingSet.Box.Visible = true
+        end
+        
+        -- Tracer
+        if drawingSet.Tracer then
+            drawingSet.Tracer.From = Vector2.new(workspace.CurrentCamera.ViewportSize.X / 2, workspace.CurrentCamera.ViewportSize.Y)
+            drawingSet.Tracer.To = screenPosition
+            drawingSet.Tracer.Visible = true
+        end
+        
+        -- Name
+        if drawingSet.Name then
+            local name = (espType == "Brainrot") and "Brainrot" or object.Name
+            drawingSet.Name.Text = name
+            drawingSet.Name.Position = screenPosition + Vector2.new(0, -40 * scale)
+            drawingSet.Name.Visible = true
+        end
+        
+        -- Distance
+        if drawingSet.Distance then
+            drawingSet.Distance.Text = string.format("%d studs", distance)
+            drawingSet.Distance.Position = screenPosition + Vector2.new(0, -20 * scale)
+            drawingSet.Distance.Visible = true
+        end
+        
+        -- Health Bar
+        if drawingSet.HealthBar and espType == "Player" and object.Character then
+            local humanoid = object.Character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                local barWidth = 40 * scale
+                local barHeight = 4
+                local healthPercent = humanoid.Health / humanoid.MaxHealth
+                
+                drawingSet.HealthBarBG.Size = Vector2.new(barWidth, barHeight)
+                drawingSet.HealthBarBG.Position = screenPosition + Vector2.new(-barWidth/2, -30 * scale)
+                drawingSet.HealthBarBG.Visible = true
+                
+                drawingSet.HealthBar.Size = Vector2.new(barWidth * healthPercent, barHeight)
+                drawingSet.HealthBar.Position = drawingSet.HealthBarBG.Position
+                drawingSet.HealthBar.Visible = true
             end
         end
     end
     
-    -- Steal and teleport sequence
-    if closestItem and closestDistance < 15 then
-        -- Mark as stolen
-        stolenItems[closestItem] = true
-        
-        -- Simulate steal action
-        fireproximityprompt(closestItem:FindFirstChildOfClass("ProximityPrompt"))
-        
-        -- Teleport to base after delay
-        task.wait(config.TeleportDelay)
-        if not isTransporting then
-            teleportToBase()
+    -- Apply colors based on ESP type
+    function DrawingLib:ApplyColors(drawingSet, espType, isHighlighted)
+        local color
+        if espType == "Brainrot" then
+            color = ESPConfig.Colors.Brainrot
+        elseif espType == "Base" then
+            color = ESPConfig.Colors.Base
+        else
+            color = isHighlighted and ESPConfig.Colors.Highlight or ESPConfig.Colors.Players
         end
         
-        -- Reset after 5 minutes (in case item respawns)
-        task.delay(300, function()
-            stolenItems[closestItem] = nil
-        end)
+        if drawingSet.Box then drawingSet.Box.Color = color end
+        if drawingSet.Tracer then drawingSet.Tracer.Color = color end
+        if drawingSet.Name then drawingSet.Name.Color = color end
+        if drawingSet.Distance then drawingSet.Distance.Color = color end
+        if drawingSet.HealthBar then drawingSet.HealthBar.Color = Color3.new(0, 1, 0) end
+    end
+end
+--#endregion
+
+--#region CORE ESP FUNCTIONS
+local function IsOnScreen(position)
+    local screenPos, visible = workspace.CurrentCamera:WorldToViewportPoint(position)
+    return visible and screenPos.Z > 0
+end
+
+local function CreateHighlight(object, color)
+    if not ESPConfig.Modes.Glow then return end
+    
+    local highlight = Instance.new("Highlight")
+    highlight.Adornee = object
+    highlight.FillColor = color
+    highlight.OutlineColor = Color3.new(1, 1, 1)
+    highlight.FillTransparency = 0.5
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Parent = object
+    
+    return highlight
+end
+
+local function CreateCham(object, color)
+    if not ESPConfig.Modes.Chams then return end
+    
+    local cham = Instance.new("BoxHandleAdornment")
+    cham.Adornee = object
+    cham.AlwaysOnTop = true
+    cham.ZIndex = 5
+    cham.Size = object.Size
+    cham.Transparency = ESPConfig.Sizes.ChamTransparency
+    cham.Color3 = color
+    cham.Parent = object
+    
+    return cham
+end
+
+local function CreateOutline(object, color)
+    if not ESPConfig.Modes.Outlines then return end
+    
+    local outline = Instance.new("SelectionBox")
+    outline.Adornee = object
+    outline.LineThickness = 0.05
+    outline.Color3 = color
+    outline.Transparency = 0.5
+    outline.Parent = object
+    
+    return outline
+end
+
+local function UpdateESP()
+    if not ESPConfig.Enabled then return end
+    
+    local camera = workspace.CurrentCamera
+    local myPosition = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    if not myPosition then return end
+    
+    -- Process brainrot objects
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and obj.Name:lower():find("brainrot") then
+            local distance = (myPosition.Position - obj.Position).Magnitude
+            if distance <= ESPConfig.MaxDistance and IsOnScreen(obj.Position) then
+                if not ESPConfig.Objects[obj] then
+                    -- Create new ESP set
+                    ESPConfig.Objects[obj] = {
+                        Drawings = DrawingLib:CreateESPSet(obj, "Brainrot"),
+                        Highlights = {
+                            Glow = CreateHighlight(obj, ESPConfig.Colors.Brainrot),
+                            Cham = CreateCham(obj, ESPConfig.Colors.Brainrot),
+                            Outline = CreateOutline(obj, ESPConfig.Colors.Brainrot)
+                        }
+                    }
+                end
+                
+                -- Update drawings
+                local screenPos = camera:WorldToViewportPoint(obj.Position)
+                DrawingLib:UpdatePosition(
+                    ESPConfig.Objects[obj].Drawings, 
+                    obj.Position,
+                    Vector2.new(screenPos.X, screenPos.Y),
+                    distance,
+                    "Brainrot"
+                )
+                DrawingLib:ApplyColors(ESPConfig.Objects[obj].Drawings, "Brainrot", false)
+            end
+        end
+    end
+    
+    -- Process players
+    for _, otherPlayer in pairs(Players:GetPlayers()) do
+        if otherPlayer ~= player and otherPlayer.Character then
+            local root = otherPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if root then
+                local distance = (myPosition.Position - root.Position).Magnitude
+                if distance <= ESPConfig.MaxDistance and IsOnScreen(root.Position) then
+                    if not ESPConfig.Objects[otherPlayer] then
+                        -- Create new ESP set
+                        ESPConfig.Objects[otherPlayer] = {
+                            Drawings = DrawingLib:CreateESPSet(otherPlayer, "Player"),
+                            Highlights = {
+                                Glow = CreateHighlight(otherPlayer.Character, ESPConfig.Colors.Players),
+                                Cham = CreateCham(root, ESPConfig.Colors.Players),
+                                Outline = CreateOutline(root, ESPConfig.Colors.Players)
+                            }
+                        }
+                    end
+                    
+                    -- Check if player is holding brainrot
+                    local isHoldingBrainrot = false
+                    for _, item in pairs(otherPlayer.Character:GetChildren()) do
+                        if item:IsA("Tool") and item.Name:lower():find("brainrot") then
+                            isHoldingBrainrot = true
+                            break
+                        end
+                    end
+                    
+                    -- Update drawings
+                    local screenPos = camera:WorldToViewportPoint(root.Position)
+                    DrawingLib:UpdatePosition(
+                        ESPConfig.Objects[otherPlayer].Drawings, 
+                        root.Position,
+                        Vector2.new(screenPos.X, screenPos.Y),
+                        distance,
+                        "Player"
+                    )
+                    DrawingLib:ApplyColors(ESPConfig.Objects[otherPlayer].Drawings, "Player", isHoldingBrainrot)
+                    
+                    -- Update highlight if holding brainrot
+                    if isHoldingBrainrot and ESPConfig.Objects[otherPlayer].Highlights.Glow then
+                        ESPConfig.Objects[otherPlayer].Highlights.Glow.FillColor = ESPConfig.Colors.Highlight
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Cleanup old objects
+    for object, data in pairs(ESPConfig.Objects) do
+        local shouldRemove = false
+        
+        if object:IsA("BasePart") then
+            shouldRemove = not object.Parent or 
+                          (myPosition.Position - object.Position).Magnitude > ESPConfig.MaxDistance or
+                          not IsOnScreen(object.Position)
+        elseif object:IsA("Player") then
+            shouldRemove = not object.Character or 
+                          not object.Character:FindFirstChild("HumanoidRootPart") or
+                          (myPosition.Position - object.Character.HumanoidRootPart.Position).Magnitude > ESPConfig.MaxDistance
+        end
+        
+        if shouldRemove then
+            -- Destroy drawings
+            for _, drawing in pairs(data.Drawings) do
+                drawing:Remove()
+            end
+            
+            -- Destroy highlights
+            for _, highlight in pairs(data.Highlights) do
+                if highlight then
+                    highlight:Destroy()
+                end
+            end
+            
+            ESPConfig.Objects[object] = nil
+        end
+    end
+end
+--#endregion
+
+--#region ESP CONTROL FUNCTIONS
+local function ToggleESP(state)
+    ESPConfig.Enabled = state
+    
+    if not state then
+        -- Clear all ESP objects
+        for object, data in pairs(ESPConfig.Objects) do
+            for _, drawing in pairs(data.Drawings) do
+                drawing:Remove()
+            end
+            for _, highlight in pairs(data.Highlights) do
+                if highlight then
+                    highlight:Destroy()
+                end
+            end
+        end
+        ESPConfig.Objects = {}
     end
 end
 
--- GUI Setup
-local MainTab = Window:NewTab("Main")
-MainTab:NewSection("Auto-Steal Plus"):NewButton("Set Base Location", "Marks current position as home", setBaseLocation)
-
-local AutoTab = Window:NewTab("Auto-Steal")
-local stealToggle = AutoTab:NewSection("Enhanced Stealing"):NewToggle("Enable Auto-Steal+", "Steal & auto-return", function(state)
-    if state then
-        Library:Notify("Auto-Steal+ Active", "Will teleport to base after stealing")
-        getgenv().autoStealEnabled = true
-        while getgenv().autoStealEnabled and task.wait(0.5) do
-            enhancedAutoSteal()
-        end
-    else
-        getgenv().autoStealEnabled = false
+local function ThrottledUpdate()
+    while ESPConfig.Enabled do
+        UpdateESP()
+        wait(ESPConfig.UpdateInterval)
     end
+end
+
+-- Start ESP system
+coroutine.wrap(ThrottledUpdate)()
+--#endregion
+
+--#region INTEGRATION WITH MAIN SCRIPT
+-- Add this to your GUI creation section:
+local ESPTab = Window:NewTab("ESP Settings")
+local ESPSection = ESPTab:NewSection("Visual Tracking")
+
+ESPSection:NewToggle("Enable ESP", "Master toggle for ESP", function(state)
+    ToggleESP(state)
 end)
 
-AutoTab:NewSlider("Teleport Delay", "Seconds after steal", 5, 0.1, 1, function(value)
-    config.TeleportDelay = value
+-- Visualization modes
+ESPSection:NewToggle("Boxes", "Show boxes around objects", function(state)
+    ESPConfig.Modes.Boxes = state
 end)
 
--- Initialize
-Library:Notify("ShadowTools v2.1 Loaded", "Set your base location first!")
+ESPSection:NewToggle("Tracers", "Show direction lines", function(state)
+    ESPConfig.Modes.Tracers = state
+end)
+
+ESPSection:NewToggle("Names", "Show object names", function(state)
+    ESPConfig.Modes.Names = state
+end)
+
+ESPSection:NewToggle("Distances", "Show distances", function(state)
+    ESPConfig.Modes.Distances = state
+end)
+
+ESPSection:NewToggle("Health Bars", "Show player health", function(state)
+    ESPConfig.Modes.HealthBars = state
+end)
+
+ESPSection:NewToggle("Glow Effect", "Highlight objects", function(state)
+    ESPConfig.Modes.Glow = state
+end)
+
+ESPSection:NewToggle("Chams", "Show colored overlays", function(state)
+    ESPConfig.Modes.Chams = state
+end)
+
+ESPSection:NewToggle("Outlines", "Show object outlines", function(state)
+    ESPConfig.Modes.Outlines = state
+end)
+
+-- Color settings
+local ColorSection = ESPTab:NewSection("Colors")
+
+ColorSection:NewColorPicker("Brainrot Color", "Color for brainrot items", 
+    ESPConfig.Colors.Brainrot, function(color)
+        ESPConfig.Colors.Brainrot = color
+end)
+
+ColorSection:NewColorPicker("Player Color", "Color for players", 
+    ESPConfig.Colors.Players, function(color)
+        ESPConfig.Colors.Players = color
+end)
+
+ColorSection:NewColorPicker("Highlight Color", "Color for brainrot holders", 
+    ESPConfig.Colors.Highlight, function(color)
+        ESPConfig.Colors.Highlight = color
+end)
+
+-- Size and range settings
+local SettingsSection = ESPTab:NewSection("Settings")
+
+SettingsSection:NewSlider("Update Rate", "Seconds between updates", 2, 0.1, 0.5, function(value)
+    ESPConfig.UpdateInterval = value
+end)
+
+SettingsSection:NewSlider("Max Distance", "Render distance (studs)", 1000, 50, 500, function(value)
+    ESPConfig.MaxDistance = value
+end)
+
+SettingsSection:NewSlider("Box Thickness", "Line thickness", 5, 1, 1, function(value)
+    ESPConfig.Sizes.BoxThickness = value
+end)
+--#endregion

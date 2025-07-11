@@ -1,0 +1,71 @@
+-- Brainrot Auto-Farmer
+-- Version: 1.2
+-- Requirements: Xeno/Krnl/Fluxus
+
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+-- CONFIG --
+local Settings = {
+    BasePosition = Vector3.new(100, 50, -30), -- Set your base coordinates
+    CollectRange = 50, -- Studs
+    Cooldown = 3, -- Seconds between actions
+    WalkSpeed = 32 -- Movement speed
+}
+
+-- CORE FUNCTIONS --
+local function FindNearestBrainrot()
+    local closest = nil
+    local minDistance = Settings.CollectRange
+
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj.Name:find("Brainrot") and obj:IsA("BasePart") then
+            local distance = (Player.Character.HumanoidRootPart.Position - obj.Position).Magnitude
+            if distance < minDistance then
+                closest = obj
+                minDistance = distance
+            end
+        end
+    end
+
+    return closest
+end
+
+local function MoveTo(position)
+    local chr = Player.Character
+    if not chr then return end
+
+    local hrp = chr:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local tween = TweenService:Create(
+        hrp,
+        TweenInfo.new((hrp.Position - position).Magnitude/Settings.WalkSpeed),
+        {CFrame = CFrame.new(position)}
+    )
+
+    tween:Play()
+    tween.Completed:Wait()
+end
+
+local function CollectBrainrot(target)
+    -- Simulate collection
+    game:GetService("ReplicatedStorage").Events.CollectItem:FireServer(target)
+
+    -- Return to base
+    MoveTo(Settings.BasePosition)
+
+    -- Simulate redemption
+    task.wait(0.5)
+    game:GetService("ReplicatedStorage").Events.RedeemItem:FireServer("Brainrot")
+end
+
+-- MAIN LOOP --
+while task.wait(1) do
+    local target = FindNearestBrainrot()
+    if target then
+        CollectBrainrot(target)
+    end
+end

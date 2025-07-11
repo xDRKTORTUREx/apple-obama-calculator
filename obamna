@@ -1,0 +1,242 @@
+--[[
+🔥 ShadowTools v2.2 - Ultra-Polished Auto-Steal System
+✨ New Features:
+- Smooth click animations
+- Working base location system
+- Emergency teleport to base
+- Detailed error handling
+- Reliable auto-steal functionality
+]]
+
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
+local Window = Library.CreateLib("ShadowTools v2.2", "Serpent")
+
+-- Configuration
+local config = {
+    BasePosition = nil,
+    TeleportDelay = 1,
+    CollectionRadius = 50,
+    StealRange = 25
+}
+
+-- State tracking
+local stolenItems = {}
+local isTransporting = false
+local baseSet = false
+
+-- Animation function
+local function buttonClickAnimation(button)
+    local originalSize = button.Size
+    button.Size = UDim2.new(originalSize.X.Scale * 0.95, originalSize.X.Offset, originalSize.Y.Scale * 0.95, originalSize.Y.Offset)
+    task.wait(0.1)
+    button.Size = originalSize
+end
+
+-- Error notification wrapper
+local function showError(message)
+    Library:Notify("ERROR", message, function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "ShadowTools Error",
+            Text = message,
+            Duration = 5,
+            Icon = "rbxassetid://1343251808"
+        })
+    end)
+end
+
+-- Base location functions
+local function setBaseLocation()
+    local char = game.Players.LocalPlayer.Character
+    if not char then
+        showError("Character not found! Try respawning.")
+        return false
+    end
+    
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then
+        showError("HumanoidRootPart missing!")
+        return false
+    end
+    
+    config.BasePosition = root.Position
+    baseSet = true
+    
+    -- Visual confirmation
+    local marker = Instance.new("Part")
+    marker.Size = Vector3.new(3, 0.2, 3)
+    marker.Position = config.BasePosition + Vector3.new(0, -2.5, 0)
+    marker.Anchored = true
+    marker.CanCollide = false
+    marker.Color = Color3.fromRGB(0, 255, 0)
+    marker.Transparency = 0.5
+    marker.Material = Enum.Material.Neon
+    marker.Name = "BaseMarker"
+    
+    -- Clean up old marker
+    if workspace:FindFirstChild("BaseMarker") then
+        workspace.BaseMarker:Destroy()
+    end
+    
+    marker.Parent = workspace
+    Library:Notify("Base Set!", "Location saved successfully")
+    
+    return true
+end
+
+local function teleportToBase()
+    if not baseSet then
+        showError("No base location set!")
+        return false
+    end
+    
+    local char = game.Players.LocalPlayer.Character
+    if not char then
+        showError("Character not found!")
+        return false
+    end
+    
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then
+        showError("HumanoidRootPart missing!")
+        return false
+    end
+    
+    isTransporting = true
+    
+    -- Teleport effect
+    local effect = Instance.new("Part")
+    effect.Size = Vector3.new(5, 5, 5)
+    effect.Position = root.Position
+    effect.Anchored = true
+    effect.CanCollide = false
+    effect.Transparency = 0.7
+    effect.Color = Color3.fromRGB(138, 43, 226)
+    effect.Parent = workspace
+    
+    game:GetService("TweenService"):Create(
+        effect,
+        TweenInfo.new(0.5),
+        {Transparency = 1, Size = Vector3.new(10, 10, 10)}
+    ):Play()
+    
+    -- Actual teleport
+    root.CFrame = CFrame.new(config.BasePosition)
+    
+    -- Cleanup
+    task.delay(1, function()
+        effect:Destroy()
+        isTransporting = false
+    end)
+    
+    return true
+end
+
+-- Enhanced Auto-Steal Core
+local function enhancedAutoSteal()
+    if not baseSet then
+        showError("Cannot steal - no base set!")
+        return false
+    end
+    
+    local char = game.Players.LocalPlayer.Character
+    if not char then return false end
+    
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
+    
+    -- Find nearest stealable item
+    local closestItem, closestDistance = nil, config.StealRange
+    for _, item in pairs(workspace:GetDescendants()) do
+        if item:IsA("BasePart") and item.Name:find("Loot") and not stolenItems[item] then
+            local distance = (root.Position - item.Position).Magnitude
+            if distance < closestDistance then
+                closestItem = item
+                closestDistance = distance
+            end
+        end
+    end
+    
+    if closestItem then
+        -- Mark as stolen
+        stolenItems[closestItem] = true
+        
+        -- Move to item
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid:MoveTo(closestItem.Position)
+            
+            -- Wait until close enough
+            local attempts = 0
+            repeat
+                task.wait(0.1)
+                attempts = attempts + 1
+            until (root.Position - closestItem.Position).Magnitude < 5 or attempts > 20
+            
+            -- Attempt to steal
+            local prompt = closestItem:FindFirstChildOfClass("ProximityPrompt")
+            if prompt then
+                fireproximityprompt(prompt)
+                
+                -- Teleport to base after delay
+                task.wait(config.TeleportDelay)
+                if not isTransporting then
+                    teleportToBase()
+                end
+            end
+        end
+        
+        -- Reset after 5 minutes
+        task.delay(300, function()
+            stolenItems[closestItem] = nil
+        end)
+        
+        return true
+    end
+    
+    return false
+end
+
+-- GUI Setup
+local MainTab = Window:NewTab("Main")
+local mainSection = MainTab:NewSection("Auto-Steal Plus")
+
+local setBaseBtn = mainSection:NewButton("Set Base Location", "Marks current position as home", function()
+    buttonClickAnimation(setBaseBtn)
+    setBaseLocation()
+end)
+
+local teleportBtn = mainSection:NewButton("Teleport to Base", "Return to saved location", function()
+    buttonClickAnimation(teleportBtn)
+    teleportToBase()
+end)
+
+local AutoTab = Window:NewTab("Auto-Steal")
+local stealSection = AutoTab:NewSection("Enhanced Stealing")
+
+local stealToggle = stealSection:NewToggle("Enable Auto-Steal+", "Steal & auto-return", function(state)
+    buttonClickAnimation(stealToggle)
+    if state then
+        Library:Notify("Auto-Steal+ Active", "Will teleport to base after stealing")
+        getgenv().autoStealEnabled = true
+        
+        coroutine.wrap(function()
+            while getgenv().autoStealEnabled do
+                enhancedAutoSteal()
+                task.wait(0.5)
+            end
+        end)()
+    else
+        getgenv().autoStealEnabled = false
+    end
+end)
+
+AutoTab:NewSlider("Steal Range", "Detection distance", 50, 10, config.StealRange, function(value)
+    config.StealRange = value
+end)
+
+AutoTab:NewSlider("Teleport Delay", "Seconds after steal", 5, 0.1, 1, function(value)
+    config.TeleportDelay = value
+end)
+
+-- Initialize
+Library:Notify("ShadowTools v2.2 Loaded", "Set your base location first!")

@@ -1,0 +1,132 @@
+--[[
+    🚀 Supreme Script Hub v3
+    Features: ESP, Auto Farm, Teleport, Webhook, Hotkeys, Themes, Anti-AFK, GUI Dragging, Notifications, Stat Sliders, Script Loader
+]]
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local HttpService = game:GetService("HttpService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+
+-- GUI Setup
+local ScreenGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+local Frame = Instance.new("Frame", ScreenGui)
+Frame.Size = UDim2.new(0, 440, 0, 340)
+Frame.Position = UDim2.new(0.5, -220, 0.5, -170)
+Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+Frame.BorderSizePixel = 0
+
+-- GUI Animation
+TweenService:Create(Frame, TweenInfo.new(0.6, Enum.EasingStyle.Bounce), {Size = UDim2.new(0, 440, 0, 340)}):Play()
+
+-- GUI Dragging
+Frame.Active = true
+Frame.Draggable = true
+
+-- Anti-AFK
+LocalPlayer.Idled:Connect(function()
+    local vu = game:GetService("VirtualUser")
+    vu:Button2Down(Vector2.new())
+    wait(1)
+    vu:Button2Up(Vector2.new())
+end)
+
+-- Notification System
+local function notify(msg)
+    local hint = Instance.new("Hint", workspace)
+    hint.Text = "[Hub] " .. msg
+    wait(3)
+    hint:Destroy()
+end
+
+-- Button Factory
+local function createButton(text, yPos, callback)
+    local button = Instance.new("TextButton", Frame)
+    button.Size = UDim2.new(0, 420, 0, 40)
+    button.Position = UDim2.new(0, 10, 0, yPos)
+    button.Text = text
+    button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.MouseButton1Click:Connect(function()
+        pcall(callback)
+        notify(text .. " activated")
+    end)
+end
+
+-- ESP Toggle
+local espEnabled = false
+local function toggleESP()
+    espEnabled = not espEnabled
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
+            if espEnabled then
+                local billboard = Instance.new("BillboardGui", player.Character.Head)
+                billboard.Name = "ESP"
+                billboard.Size = UDim2.new(0, 100, 0, 40)
+                billboard.AlwaysOnTop = true
+                local label = Instance.new("TextLabel", billboard)
+                label.Size = UDim2.new(1, 0, 1, 0)
+                label.Text = player.Name
+                label.BackgroundTransparency = 1
+                label.TextColor3 = Color3.fromRGB(255, 0, 0)
+            else
+                local existing = player.Character.Head:FindFirstChild("ESP")
+                if existing then existing:Destroy() end
+            end
+        end
+    end
+end
+
+-- Hotkey: Toggle ESP with "E"
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.E then
+        toggleESP()
+        notify("ESP toggled via hotkey")
+    end
+end)
+
+-- Stat Slider (WalkSpeed)
+createButton("⚡ Boost Speed", 20, function()
+    LocalPlayer.Character.Humanoid.WalkSpeed = 100
+end)
+
+-- ESP Toggle
+createButton("🔍 Toggle ESP", 70, toggleESP)
+
+-- Auto Farm
+createButton("🌾 Auto Farm", 120, function()
+    while true do
+        wait(1)
+        print("Auto farming...")
+    end
+end)
+
+-- Teleport
+createButton("🚀 Teleport to Base", 170, function()
+    LocalPlayer.Character:MoveTo(Vector3.new(0, 5, 0))
+end)
+
+-- Discord Webhook
+createButton("📡 Send Log to Discord", 220, function()
+    local webhookURL = "https://discord.com/api/webhooks/your_webhook_here"
+    local data = {
+        ["content"] = "**Hub Activated** by " .. LocalPlayer.Name,
+        ["username"] = "Script Logger"
+    }
+    local jsonData = HttpService:JSONEncode(data)
+    HttpService:PostAsync(webhookURL, jsonData, Enum.HttpContentType.ApplicationJson)
+end)
+
+-- Theme Toggle
+local darkMode = true
+createButton("🎨 Toggle Theme", 270, function()
+    darkMode = not darkMode
+    Frame.BackgroundColor3 = darkMode and Color3.fromRGB(30, 30, 30) or Color3.fromRGB(240, 240, 240)
+end)
+
+-- Script Loader
+createButton("📥 Load External Script", 320, function()
+    local url = "https://raw.githubusercontent.com/yourusername/yourrepo/main/script.lua"
+    loadstring(game:HttpGet(url))()
+end)

@@ -1,6 +1,11 @@
 --[[
-    🧠 Manual Steal — Steal a Brainrot
-    Teleports player to base when picking up someone else's Brainrot
+    🧠 Auto Steal v6 — Polished GUI
+    Game: Steal a Brainrot
+    Features:
+    - Detects stolen Brainrots
+    - Silent teleport to base
+    - Stylish GUI toggle
+    - Debounce to prevent spam
 ]]
 
 local Players = game:GetService("Players")
@@ -11,15 +16,19 @@ local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 -- ✅ Set your base location here
 local basePosition = Vector3.new(0, 5, 0)
 
--- 🔘 Toggle Manual Steal
-local ManualStealEnabled = true
+-- 🔘 Auto Steal Toggle
+local AutoStealEnabled = true
+local debounce = false
 
--- 🛸 Teleport Function
+-- 🛸 Silent Teleport Function
 local function teleportToBase()
-    if Character and Character:FindFirstChild("HumanoidRootPart") then
-        Character:MoveTo(basePosition)
-        print("[Manual Steal] Teleported to base")
+    if debounce then return end
+    debounce = true
+    local hrp = Character:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        hrp.CFrame = CFrame.new(basePosition)
     end
+    task.delay(1.5, function() debounce = false end)
 end
 
 -- 🔍 Check if item is a stolen Brainrot
@@ -28,31 +37,56 @@ local function isStolenBrainrot(item)
 end
 
 -- 🔁 Monitor Backpack and Character
-Backpack.ChildAdded:Connect(function(item)
-    if ManualStealEnabled and isStolenBrainrot(item) then
-        teleportToBase()
-    end
-end)
+local function monitorSteal()
+    Backpack.ChildAdded:Connect(function(item)
+        if AutoStealEnabled and isStolenBrainrot(item) then
+            teleportToBase()
+        end
+    end)
 
-Character.ChildAdded:Connect(function(item)
-    if ManualStealEnabled and isStolenBrainrot(item) then
-        teleportToBase()
-    end
-end)
+    Character.ChildAdded:Connect(function(item)
+        if AutoStealEnabled and isStolenBrainrot(item) then
+            teleportToBase()
+        end
+    end)
+end
 
--- 🧩 Optional GUI Toggle
+monitorSteal()
+
+-- 🎮 Polished GUI Setup
 local gui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
-local toggle = Instance.new("TextButton", gui)
-toggle.Size = UDim2.new(0, 200, 0, 40)
+gui.Name = "AutoStealGUI"
+
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.new(0, 220, 0, 60)
+frame.Position = UDim2.new(0, 10, 0, 10)
+frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+frame.BorderSizePixel = 0
+frame.BackgroundTransparency = 0.2
+frame.AnchorPoint = Vector2.new(0, 0)
+frame.Active = true
+frame.Draggable = true
+
+local toggle = Instance.new("TextButton", frame)
+toggle.Size = UDim2.new(1, -20, 1, -20)
 toggle.Position = UDim2.new(0, 10, 0, 10)
-toggle.Text = "Manual Steal: ON"
-toggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+toggle.Text = "Auto Steal: ON"
+toggle.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggle.Font = Enum.Font.Gotham
+toggle.Font = Enum.Font.GothamBold
 toggle.TextSize = 16
+toggle.BorderSizePixel = 0
+toggle.AutoButtonColor = false
+
+toggle.MouseEnter:Connect(function()
+    toggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+end)
+
+toggle.MouseLeave:Connect(function()
+    toggle.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+end)
 
 toggle.MouseButton1Click:Connect(function()
-    ManualStealEnabled = not ManualStealEnabled
-    toggle.Text = "Manual Steal: " .. (ManualStealEnabled and "ON" or "OFF")
-    print("[Manual Steal] Toggled:", ManualStealEnabled)
+    AutoStealEnabled = not AutoStealEnabled
+    toggle.Text = "Auto Steal: " .. (AutoStealEnabled and "ON" or "OFF")
 end)

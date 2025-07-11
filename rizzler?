@@ -1,64 +1,57 @@
 --[[
-    🚀 Supreme Hub Final Build
-    Features:
-    - ESP Module (Name, Box, Bones, Tracers)
-    - Auto Farm (Stealth-Safe Loop)
-    - Teleport Module with Location Presets
-    - Speed Slider
-    - Anti-AFK
-    - Kick Prevention (Heartbeat & Rejoin Option)
-    - Theme Toggle (Light/Dark)
-    - GUI Minimizer
-    - Notification System
-    - External Script Loader
-    - FPS Booster
-    - Execution Status Panel
+    🚀 Supreme Hub — Unified Build
+    Includes: ESP System, Auto Steal, GUI, Utility Features
 ]]
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
-local TeleportService = game:GetService("TeleportService")
 local Camera = workspace.CurrentCamera
 
--- 🧩 GUI Base
+-- 🧠 ESP Settings
+local ESP = {
+    Enabled = true,
+    Mode = "Name",
+    Color = Color3.fromRGB(255, 0, 0),
+    Distance = 5000
+}
+
+-- 🛸 Auto Steal Settings
+local AutoStealEnabled = true
+local basePosition = Vector3.new(0, 5, 0) -- Replace with actual base coordinates
+
+-- 🎨 GUI Setup
 local ScreenGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
 local Frame = Instance.new("Frame", ScreenGui)
-Frame.Size = UDim2.new(0, 480, 0, 380)
-Frame.Position = UDim2.new(0.5, -240, 0.5, -190)
-Frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+Frame.Size = UDim2.new(0, 480, 0, 400)
+Frame.Position = UDim2.new(0.5, -240, 0.5, -200)
+Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 Frame.Active = true
 Frame.Draggable = true
-Frame.BorderSizePixel = 0
-TweenService:Create(Frame, TweenInfo.new(0.6, Enum.EasingStyle.Bounce), {Size = Frame.Size}):Play()
 
--- 💤 Anti-AFK
-LocalPlayer.Idled:Connect(function()
-    game:GetService("VirtualUser"):Button2Down(Vector2.new())
-    wait(1)
-    game:GetService("VirtualUser"):Button2Up(Vector2.new())
-end)
+local y = 20
+local function createButton(text, callback)
+    local btn = Instance.new("TextButton", Frame)
+    btn.Size = UDim2.new(0, 460, 0, 35)
+    btn.Position = UDim2.new(0, 10, 0, y)
+    btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Text = text
+    btn.Font = Enum.Font.Gotham
+    btn.TextSize = 16
+    btn.MouseButton1Click:Connect(callback)
+    y += 40
+end
 
--- 🛡️ Kick Prevention
-local rejoinTimer = 1140
-task.spawn(function()
-    while true do
-        wait(rejoinTimer)
-        TeleportService:Teleport(game.PlaceId)
-    end
-end)
-
--- 🔔 Notifications
 local function notify(msg)
     local tip = Instance.new("TextLabel", ScreenGui)
     tip.Size = UDim2.new(0, 400, 0, 30)
     tip.Position = UDim2.new(0.5, -200, 0, 5)
     tip.BackgroundTransparency = 0.3
-    tip.BackgroundColor3 = Color3.fromRGB(50,50,50)
-    tip.TextColor3 = Color3.fromRGB(255,255,255)
+    tip.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    tip.TextColor3 = Color3.fromRGB(255, 255, 255)
     tip.Font = Enum.Font.Code
     tip.TextSize = 18
     tip.Text = "[Hub] " .. msg
@@ -66,93 +59,149 @@ local function notify(msg)
     task.delay(3, function() tip:Destroy() end)
 end
 
--- 🎮 ESP Module
-local espMode = "Name"
-local function drawESP()
-    for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
-            if espMode == "Name" then
-                local gui = Instance.new("BillboardGui", plr.Character.Head)
-                gui.Size = UDim2.new(0,100,0,20)
-                gui.AlwaysOnTop = true
-                local txt = Instance.new("TextLabel", gui)
-                txt.Size = UDim2.new(1,0,1,0)
-                txt.BackgroundTransparency = 1
-                txt.TextColor3 = Color3.fromRGB(255,0,0)
-                txt.Text = plr.Name
-            elseif espMode == "Box" then
-                -- Optional: use Drawing API for box logic (executors required)
-                print("[ESP] Box mode rendering skipped (Drawing API recommended)")
+-- 🧠 ESP Drawing
+local drawings = {}
+local function clearDrawings()
+    for _, d in pairs(drawings) do d:Remove() end
+    drawings = {}
+end
+
+local function drawESPForPlayer(player)
+    if not ESP.Enabled or player == LocalPlayer then return end
+    local char = player.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+
+    local hrp = char.HumanoidRootPart
+    local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+    if not onScreen or (hrp.Position - Camera.CFrame.Position).Magnitude > ESP.Distance then return end
+
+    if ESP.Mode == "Name" then
+        local text = Drawing.new("Text")
+        text.Text = player.Name
+        text.Position = Vector2.new(pos.X, pos.Y)
+        text.Size = 16
+        text.Color = ESP.Color
+        text.Center = true
+        text.Outline = true
+        text.Visible = true
+        table.insert(drawings, text)
+
+    elseif ESP.Mode == "Box" then
+        local box = Drawing.new("Square")
+        box.Size = Vector2.new(60, 80)
+        box.Position = Vector2.new(pos.X - 30, pos.Y - 40)
+        box.Color = ESP.Color
+        box.Thickness = 2
+        box.Filled = false
+        box.Visible = true
+        table.insert(drawings, box)
+
+    elseif ESP.Mode == "Bones" then
+        local function drawLine(fromPart, toPart)
+            if char:FindFirstChild(fromPart) and char:FindFirstChild(toPart) then
+                local from = Camera:WorldToViewportPoint(char[fromPart].Position)
+                local to = Camera:WorldToViewportPoint(char[toPart].Position)
+                local line = Drawing.new("Line")
+                line.From = Vector2.new(from.X, from.Y)
+                line.To = Vector2.new(to.X, to.Y)
+                line.Color = ESP.Color
+                line.Thickness = 1.5
+                line.Visible = true
+                table.insert(drawings, line)
             end
         end
+        drawLine("Head", "UpperTorso")
+        drawLine("UpperTorso", "LowerTorso")
+        drawLine("UpperTorso", "LeftUpperArm")
+        drawLine("LeftUpperArm", "LeftLowerArm")
+        drawLine("LeftLowerArm", "LeftHand")
+        drawLine("UpperTorso", "RightUpperArm")
+        drawLine("RightUpperArm", "RightLowerArm")
+        drawLine("RightLowerArm", "RightHand")
+        drawLine("LowerTorso", "LeftUpperLeg")
+        drawLine("LeftUpperLeg", "LeftLowerLeg")
+        drawLine("LeftLowerLeg", "LeftFoot")
+        drawLine("LowerTorso", "RightUpperLeg")
+        drawLine("RightUpperLeg", "RightLowerLeg")
+        drawLine("RightLowerLeg", "RightFoot")
     end
 end
 
--- 🎛 Button Factory
-local y = 20
-local function createButton(text, callback)
-    local btn = Instance.new("TextButton", Frame)
-    btn.Size = UDim2.new(0, 460, 0, 35)
-    btn.Position = UDim2.new(0, 10, 0, y)
-    btn.BackgroundColor3 = Color3.fromRGB(50,50,50)
-    btn.TextColor3 = Color3.fromRGB(255,255,255)
-    btn.Text = text
-    btn.Font = Enum.Font.Gotham
-    btn.TextSize = 16
-    btn.MouseButton1Click:Connect(function()
-        pcall(callback)
-        notify(text .. " activated")
+RunService.RenderStepped:Connect(function()
+    clearDrawings()
+    for _, player in pairs(Players:GetPlayers()) do
+        drawESPForPlayer(player)
+    end
+end)
+
+-- 🛸 Auto Steal Logic
+local function teleportToBase()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        LocalPlayer.Character:MoveTo(basePosition)
+        notify("Auto Steal: Teleported to base")
+    end
+end
+
+local function monitorPickup()
+    LocalPlayer.Backpack.ChildAdded:Connect(function(item)
+        if AutoStealEnabled then teleportToBase() end
     end)
-    y = y + 40
+    LocalPlayer.Character.ChildAdded:Connect(function(item)
+        if AutoStealEnabled and item:IsA("Tool") then teleportToBase() end
+    end)
 end
+monitorPickup()
 
--- 🧩 Main Buttons
-createButton("🧠 ESP: Draw Selected", function() drawESP() end)
-createButton("🌾 Auto Farm (Stealth Loop)", function()
-    while true do
-        wait(math.random(2,4))
-        print("Auto farming...")
-    end
+-- 🧩 GUI Buttons
+createButton("🧠 Toggle ESP", function()
+    ESP.Enabled = not ESP.Enabled
+    notify("ESP: " .. (ESP.Enabled and "Enabled" or "Disabled"))
 end)
-createButton("📍 Teleport to Spawn", function()
-    LocalPlayer.Character:MoveTo(Vector3.new(0,5,0))
-    Camera.CameraSubject = LocalPlayer.Character:FindFirstChild("Humanoid") or LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+
+createButton("🔧 Cycle ESP Mode", function()
+    local modes = {"Name", "Box", "Bones"}
+    local index = table.find(modes, ESP.Mode) or 1
+    ESP.Mode = modes[index % #modes + 1]
+    notify("ESP Mode: " .. ESP.Mode)
 end)
-createButton("⚡ Set Speed to 100", function()
-    LocalPlayer.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = 100
+
+createButton("🎨 Change ESP Color", function()
+    ESP.Color = Color3.fromRGB(math.random(100,255), math.random(100,255), math.random(100,255))
+    notify("ESP Color changed")
 end)
-createButton("📡 Log to Discord", function()
-    local webhook = "https://discord.com/api/webhooks/your_webhook_here"
-    local payload = {
-        ["content"] = "**Hub Activated** by " .. LocalPlayer.Name,
-        ["username"] = "Script Logger"
-    }
-    local data = HttpService:JSONEncode(payload)
-    HttpService:PostAsync(webhook, data, Enum.HttpContentType.ApplicationJson)
+
+createButton("🛸 Toggle Auto Steal", function()
+    AutoStealEnabled = not AutoStealEnabled
+    notify("Auto Steal: " .. (AutoStealEnabled and "Enabled" or "Disabled"))
 end)
-createButton("🎨 Toggle Theme", function()
-    local isDark = Frame.BackgroundColor3 == Color3.fromRGB(30,30,30)
-    Frame.BackgroundColor3 = isDark and Color3.fromRGB(240,240,240) or Color3.fromRGB(30,30,30)
+
+createButton("⚡ Speed Boost", function()
+    local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if hum then hum.WalkSpeed = 100 end
 end)
+
+createButton("📍 Teleport to Base", teleportToBase)
+
 createButton("📥 Load External Script", function()
     local url = "https://raw.githubusercontent.com/yourusername/yourrepo/main/script.lua"
     loadstring(game:HttpGet(url))()
 end)
+
 createButton("📉 FPS Boost", function()
     RunService:Set3dRenderingEnabled(false)
+    notify("FPS Boost activated")
 end)
+
+createButton("🎨 Toggle Theme", function()
+    local isDark = Frame.BackgroundColor3 == Color3.fromRGB(30,30,30)
+    Frame.BackgroundColor3 = isDark and Color3.fromRGB(240,240,240) or Color3.fromRGB(30,30,30)
+end)
+
 createButton("🧊 Minimize GUI", function()
     Frame.Visible = false
     task.delay(10, function() Frame.Visible = true end)
 end)
-createButton("✅ Hub Loaded", function()
-    notify("Version: Final Build | Ready to use.")
-end)
 
--- 🧪 ESP Mode Dropdown (basic text cycle)
-createButton("🔧 Cycle ESP Mode", function()
-    local modes = {"Name", "Box", "Skeleton", "Tracers"}
-    local index = table.find(modes, espMode) or 1
-    espMode = modes[index % #modes + 1]
-    notify("ESP mode: " .. espMode)
-end)
+createButton("✅ Hub Loaded", function()
+    notify("Supreme Hub is ready to roll.")
+end

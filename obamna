@@ -1,380 +1,58 @@
 --[[
-✅ 100% TESTED & WORKING
-✅ Guaranteed Execution
-✅ Premium Brainrot Steal System
-✅ Undetectable Methods
-✅ 500+ Lines of Premium Code
+    🧠 Manual Steal — Steal a Brainrot
+    Teleports player to base when picking up someone else's Brainrot
 ]]
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local Backpack = LocalPlayer:WaitForChild("Backpack")
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 
---#region SECURE INITIALIZATION
--- Load library with error handling
-local function LoadLibrary()
-    local success, lib = pcall(function()
-        return loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua", true))()
-    end)
-    return success and lib or error("Failed to load UI library")
-end
+-- ✅ Set your base location here
+local basePosition = Vector3.new(0, 5, 0)
 
-local Library = LoadLibrary()
-local Window = Library.CreateLib("ShadowTools Elite", "Serpent")
+-- 🔘 Toggle Manual Steal
+local ManualStealEnabled = true
 
--- Debug console
-local function DebugPrint(message)
-    print("[ShadowTools] " .. message)
-    game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
-        Text = "[ShadowTools] " .. message,
-        Color = Color3.new(1,1,1),
-        Font = Enum.Font.SourceSansBold,
-        TextSize = 18
-    })
-end
---#endregion
-
---#region CONFIGURATION (Verified Values)
-local Config = {
-    Base = {
-        Position = Vector3.new(0, 100, 0),
-        Set = false,
-        Marker = nil,
-        LastTeleport = 0
-    },
-    
-    BrainrotSteal = {
-        ManualMode = false,
-        DetectionRange = 30,
-        TeleportDelay = 0.5,
-        VisualEffects = true,
-        SoundEffect = true
-    },
-    
-    Player = {
-        Speed = 16,
-        Jump = 50,
-        Noclip = false
-    },
-    
-    Visual = {
-        Fullbright = false
-    },
-    
-    Safety = {
-        AntiAFK = true,
-        Cooldown = 2
-    }
-}
---#endregion
-
---#region CORE SYSTEMS (Tested x3)
--- Base System
-local function CreateBaseMarker()
-    if Config.Base.Marker then Config.Base.Marker:Destroy() end
-    
-    local marker = Instance.new("Part")
-    marker.Size = Vector3.new(5, 1, 5)
-    marker.Position = Config.Base.Position - Vector3.new(0, 2.5, 0)
-    marker.Anchored = true
-    marker.CanCollide = false
-    marker.Transparency = 0.8
-    marker.Color = Color3.fromRGB(0, 200, 255)
-    marker.Material = Enum.Material.Neon
-    marker.Name = "ST_BaseMarker_"..tostring(math.random(10000,99999))
-    
-    -- Add label
-    local gui = Instance.new("BillboardGui")
-    gui.Size = UDim2.new(4, 0, 2, 0)
-    gui.Adornee = marker
-    
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 1, 0)
-    label.Text = "BASE"
-    label.TextColor3 = Color3.new(1,1,1)
-    label.BackgroundTransparency = 1
-    label.Font = Enum.Font.SourceSansBold
-    label.Parent = gui
-    gui.Parent = marker
-    
-    marker.Parent = workspace
-    Config.Base.Marker = marker
-    
-    DebugPrint("Base marker created at "..tostring(Config.Base.Position))
-end
-
-local function SetBaseLocation()
-    local char = Players.LocalPlayer.Character
-    if not char then
-        DebugPrint("SetBaseLocation failed: No character")
-        return false
-    end
-    
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then
-        DebugPrint("SetBaseLocation failed: No HumanoidRootPart")
-        return false
-    end
-    
-    Config.Base.Position = root.Position
-    Config.Base.Set = true
-    CreateBaseMarker()
-    
-    -- Force server acknowledgment
-    root.Velocity = Vector3.new(0, 50, 0)
-    task.wait(0.1)
-    root.Velocity = Vector3.new()
-    
-    DebugPrint("Base location set successfully")
-    Library:Notify("Success", "Base location set!", 3)
-    return true
-end
-
--- Brainrot Steal System
-local function CreateStealEffect(position)
-    if not Config.BrainrotSteal.VisualEffects then return end
-    
-    local effect = Instance.new("Part")
-    effect.Size = Vector3.new(3, 3, 3)
-    effect.Position = position
-    effect.Anchored = true
-    effect.CanCollide = false
-    effect.Transparency = 0.7
-    effect.Color = Color3.fromRGB(255, 50, 50)
-    effect.Material = Enum.Material.Neon
-    
-    TweenService:Create(
-        effect,
-        TweenInfo.new(0.5),
-        {Size = Vector3.new(8, 8, 8), Transparency = 1}
-    ):Play()
-    
-    effect.Parent = workspace
-    game.Debris:AddItem(effect, 0.6)
-    
-    DebugPrint("Created steal effect at "..tostring(position))
-end
-
-local function TeleportToBase()
-    if not Config.Base.Set then
-        DebugPrint("Teleport failed: No base set")
-        return false
-    end
-    
-    -- Cooldown check
-    if tick() - Config.Base.LastTeleport < Config.Safety.Cooldown then
-        DebugPrint("Teleport on cooldown")
-        return false
-    end
-    Config.Base.LastTeleport = tick()
-    
-    local char = Players.LocalPlayer.Character
-    if not char then
-        DebugPrint("Teleport failed: No character")
-        return false
-    end
-    
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then
-        DebugPrint("Teleport failed: No HumanoidRootPart")
-        return false
-    end
-    
-    -- Visual effect
-    CreateStealEffect(root.Position)
-    
-    -- Network-level teleport
-    local original = root.Velocity
-    root.Velocity = Vector3.new(0, 100, 0)
-    task.wait(0.05)
-    root.CFrame = CFrame.new(Config.Base.Position)
-    root.Velocity = original
-    
-    -- Verify teleport
-    task.wait(0.1)
-    if (root.Position - Config.Base.Position).Magnitude > 10 then
-        -- Fallback method
-        root.CFrame = CFrame.new(Config.Base.Position)
-    end
-    
-    DebugPrint("Teleported to base successfully")
-    return true
-end
-
-local function OnItemAdded(item)
-    if not Config.BrainrotSteal.ManualMode then return end
-    
-    -- Check if it's a Brainrot tool
-    if item:IsA("Tool") and string.find(string.lower(item.Name), "brainrot") then
-        DebugPrint("Brainrot detected: "..item.Name)
-        
-        -- Visual feedback
-        Library:Notify("Brainrot Stolen", "Teleporting to base...", 3)
-        CreateStealEffect(Players.LocalPlayer.Character.HumanoidRootPart.Position)
-        
-        -- Teleport after delay
-        task.wait(Config.BrainrotSteal.TeleportDelay)
-        if TeleportToBase() then
-            DebugPrint("Successful steal & teleport")
-        else
-            DebugPrint("Teleport failed after steal")
-        end
+-- 🛸 Teleport Function
+local function teleportToBase()
+    if Character and Character:FindFirstChild("HumanoidRootPart") then
+        Character:MoveTo(basePosition)
+        print("[Manual Steal] Teleported to base")
     end
 end
 
-local function SetupStealConnections()
-    -- Backpack monitoring
-    Players.LocalPlayer.Backpack.ChildAdded:Connect(OnItemAdded)
-    
-    -- Character monitoring
-    Players.LocalPlayer.CharacterAdded:Connect(function(char)
-        char.ChildAdded:Connect(OnItemAdded)
-    end)
-    
-    -- Existing character
-    if Players.LocalPlayer.Character then
-        Players.LocalPlayer.Character.ChildAdded:Connect(OnItemAdded)
-    end
-    
-    DebugPrint("Steal connections established")
+-- 🔍 Check if item is a stolen Brainrot
+local function isStolenBrainrot(item)
+    return item:IsA("Tool") and item.Name:lower():find("brainrot") and item:FindFirstChild("Owner") and item.Owner.Value ~= LocalPlayer.Name
 end
 
--- Movement Systems
-local function UpdateMovement()
-    local char = Players.LocalPlayer.Character
-    if not char then return end
-    
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
-    
-    humanoid.WalkSpeed = Config.Player.Speed
-    humanoid.JumpPower = Config.Player.Jump
-end
-
-local function NoclipLoop()
-    if not Config.Player.Noclip then return end
-    
-    local char = Players.LocalPlayer.Character
-    if not char then return end
-    
-    for _, part in pairs(char:GetDescendants()) do
-        if part:IsA("BasePart") then
-            part.CanCollide = false
-        end
-    end
-end
-
--- Utility Systems
-local function AntiAFK()
-    while Config.Safety.AntiAFK do
-        game:GetService("VirtualInputManager"):SendKeyEvent(true, "F", false, game)
-        wait(2)
-        game:GetService("VirtualInputManager"):SendKeyEvent(false, "F", false, game)
-        wait(60)
-    end
-end
-
-local function UpdateFullbright()
-    if Config.Visual.Fullbright then
-        game:GetService("Lighting").GlobalShadows = false
-        game:GetService("Lighting").Brightness = 2
-    else
-        game:GetService("Lighting").GlobalShadows = true
-        game:GetService("Lighting").Brightness = 1
-    end
-end
---#endregion
-
---#region PREMIUM GUI
--- Main Tab
-local MainTab = Window:NewTab("Main")
-local BaseSection = MainTab:NewSection("Base System")
-
-BaseSection:NewButton("Set Base Location", "Marks current position", function()
-    if SetBaseLocation() then
-        Library:Notify("Success", "Base location saved", 3)
-    else
-        Library:Notify("Error", "Failed to set base", 3)
+-- 🔁 Monitor Backpack and Character
+Backpack.ChildAdded:Connect(function(item)
+    if ManualStealEnabled and isStolenBrainrot(item) then
+        teleportToBase()
     end
 end)
 
-BaseSection:NewLabel(Config.Base.Set 
-    and string.format("Base: [X:%.1f, Y:%.1f, Z:%.1f]", 
-        Config.Base.Position.X, 
-        Config.Base.Position.Y, 
-        Config.Base.Position.Z)
-    or "Base: Not set")
-
--- Brainrot Tab
-local StealTab = Window:NewTab("Brainrot Steal")
-local StealSection = StealTab:NewSection("Manual Steal")
-
-StealSection:NewToggle("Manual Steal Mode", "Teleport when stealing", function(state)
-    Config.BrainrotSteal.ManualMode = state
-    Library:Notify("Manual Steal", state and "ENABLED" or "DISABLED", 3)
-    DebugPrint("Manual steal mode: "..tostring(state))
-end)
-
-StealSection:NewSlider("Teleport Delay", "Seconds after steal", 2, 0.1, 0.5, function(value)
-    Config.BrainrotSteal.TeleportDelay = value
-    DebugPrint("Teleport delay set to "..value)
-end)
-
--- Player Tab
-local PlayerTab = Window:NewTab("Player")
-local MoveSection = PlayerTab:NewSection("Movement")
-
-MoveSection:NewSlider("Walk Speed", "Movement speed", 100, 16, 16, function(value)
-    Config.Player.Speed = value
-    UpdateMovement()
-    DebugPrint("Speed set to "..value)
-end)
-
-MoveSection:NewToggle("Noclip", "Walk through walls", function(state)
-    Config.Player.Noclip = state
-    DebugPrint("Noclip: "..tostring(state))
-end)
-
--- Visuals Tab
-local VisualTab = Window:NewTab("Visuals")
-local RenderSection = VisualTab:NewSection("Rendering")
-
-RenderSection:NewToggle("Fullbright", "Remove shadows", function(state)
-    Config.Visual.Fullbright = state
-    UpdateFullbright()
-    DebugPrint("Fullbright: "..tostring(state))
-end)
-
--- Utility Tab
-local UtilityTab = Window:NewTab("Utility")
-local ToolsSection = UtilityTab:NewSection("Tools")
-
-ToolsSection:NewToggle("Anti-AFK", "Prevent idle kicks", function(state)
-    Config.Safety.AntiAFK = state
-    if state then
-        coroutine.wrap(AntiAFK)()
+Character.ChildAdded:Connect(function(item)
+    if ManualStealEnabled and isStolenBrainrot(item) then
+        teleportToBase()
     end
-    DebugPrint("Anti-AFK: "..tostring(state))
-end)
---#endregion
-
---#region INITIALIZATION
--- Setup connections
-SetupStealConnections()
-
--- Start systems
-RunService.Heartbeat:Connect(function()
-    UpdateMovement()
-    NoclipLoop()
 end)
 
--- Set defaults
-UpdateFullbright()
-if Config.Safety.AntiAFK then
-    coroutine.wrap(AntiAFK)()
-end
+-- 🧩 Optional GUI Toggle
+local gui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+local toggle = Instance.new("TextButton", gui)
+toggle.Size = UDim2.new(0, 200, 0, 40)
+toggle.Position = UDim2.new(0, 10, 0, 10)
+toggle.Text = "Manual Steal: ON"
+toggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggle.Font = Enum.Font.Gotham
+toggle.TextSize = 16
 
-DebugPrint("ShadowTools Elite initialized successfully")
-Library:Notify("ShadowTools Elite", "System ready", 5)
---#endregion
+toggle.MouseButton1Click:Connect(function()
+    ManualStealEnabled = not ManualStealEnabled
+    toggle.Text = "Manual Steal: " .. (ManualStealEnabled and "ON" or "OFF")
+    print("[Manual Steal] Toggled:", ManualStealEnabled)
+end)
